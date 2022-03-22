@@ -71,7 +71,7 @@ def publish(client):
 
     def parse(payload):
         '''
-            Este procedimiento se engar de analizar los datos de la diadema Neurosky
+            Este procedimiento, se encarga de analizar los datos de la diadema Neurosky
         '''
         global i
         i = []
