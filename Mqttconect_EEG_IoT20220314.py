@@ -1,3 +1,4 @@
+#   Librerias 
 #import time
 import serial
 #import numpy as np
@@ -7,10 +8,12 @@ from scipy.signal import butter, filtfilt
 from paho.mqtt import client as mqtt_client
 from datetime import datetime
 
+#   Las siguientes 3 líneas se ejecutan en la terminal de la Raspberry pi 4
 # hcitool scan
 # sdptool records 24:71:89:EC:69:DC
 # sudo rfcomm bind 0 24:71:89:EC:69:DC 1
 
+#   Datos necesarios para conexión MQTT 
 broker = '148.206.49.17'
 port = 1883
 topic = "eegIoT/data"
@@ -19,17 +22,24 @@ client_id = 'luz_publica'
 username = 'eegIoT'
 password = '1234'
 
+#   variables globales incializadas con marcas de tiempo. Se utilizaran para controlar y registrar los datos de la señal EEG.
 dt1 = datetime.now()
 dt2 = datetime.now()
 
 def connect_mqtt():
+    '''
+        Procedimiento que se encarga de establecer la conexión a MQTT
+    '''
     def on_connect(client, userdata, flags, rc):
+        '''
+            Procedimiento anidado que imprime, soi la conexión al broker MQTT es exitosa o no.
+        '''
         if rc == 0:
             print("Connected to MQTT Broker!")
         else:
             print("Failed to connect, return code %d\n", rc)
 
-    client = mqtt_client.Client(client_id)
+    client = mqtt_client.Client(client_id) 
     client.username_pw_set(username, password)
     client.on_connect = on_connect
     client.connect(broker, port)
@@ -37,7 +47,9 @@ def connect_mqtt():
 
 
 def publish(client):
-    #while True:
+    '''
+        Este procedimiento se encarga de publicar los datos de la señal EEG en crudo y filtrada.
+    '''
     SYNC = 0xAA
     EXCODE = 0x55
     CODES = {0x02: 'POOR_SIGNAL',
@@ -47,16 +59,20 @@ def publish(client):
              0x80: 'RAW',
              0x83: 'ASIC_EEG_POWER'}
 
-    time = list(range(512))
+    #   Declaración de variables globales, estas variables su tipo de dato será una lista.
     global data
-    data = [0]*512
     global dataFilt
+    
+    time = list(range(512))
+    data = [0]*512
     dataFilt = [0]*512
    
     print('*********')
 
     def parse(payload):
-        
+        '''
+            Este procedimiento se engar de analizar los datos de la diadema Neurosky
+        '''
         global i
         i = []
         global data
@@ -105,31 +121,40 @@ def publish(client):
                             #filtro
                             global dataFilt
                             
-                            fichero = open('datos.txt', 'r')
-                            a = fichero.read()
+                            fichero = open('datos.txt', 'r') # abre el archivo de texto en modo lectura
+                            a = fichero.read() #    Lee el archivo 
                             print(a)
-                            mm = a.split(' ')
+                            mm = a.split(' ') # Extrae la información en tipo lista para utilizar el rango de frecuencias que se ocuparan para el filtro pasa-banda
                             
-                            ws = 512
-                            ent = float(mm[0])
+                            ws = 512 #  frecuencia de muestreo
+                            #   Convierte los datos de la lista en flotantes 
+                            ent = float(mm[0]) 
                             sal = float(mm[1])
-                            NOrden = 4
+                            NOrden = 4 #Número de orden del filtro
                             
-                            b, a= butter(NOrden,[ent,sal], fs =ws, btype ='band')
-                            dataFilt = list(filtfilt(b, a, data))
-                            dt2 = datetime.now()
-                            fichero = open('almacenar.txt', 'r')
-                            almacena = fichero.read()
+                            b, a= butter(NOrden,[ent,sal], fs =ws, btype ='band') # Filtro butterworth pasa-banda
+                            dataFilt = list(filtfilt(b, a, data)) # Almacena los datos de la señal EEG en una lista
+                            dt2 = datetime.now() 
+                            fichero = open('almacenar.txt', 'r')    # abre el archivo de texto en modo lectura
+                            almacena = fichero.read() #    Lee el archivo y almacena los datos en una variable (los datos son 'true' o 'false'
                             
-                            if almacena == 'true':
-                                
+                            if almacena == 'true': 
+                                '''
+                                    En esta condición si la valiable almancena es true, entonces los datos de la señal EEG
+                                    se irán guardando en un archivo de texto con su respectiva marca de tiempo.
+                                '''
                                 fichero = open('./texto.txt', 'a', encoding ='utf-8')
-                                fichero.write(str(dt2)+(' ')+str(data)+('\n'))
+                                fichero.write(str(dt2)+(' ')+str(data)+('\n')) #    Aquí se empieza a escribir los datos se la señal EEG en el archivo de texto
                                 dt2 = datetime.now()
-                                diferencia = (dt2-dt1)
-                                total_s = diferencia.total_seconds()
+                                diferencia = (dt2-dt1) #    Se realiza para después saber en que momento se enviarán los datos 
+                                                       #    al broker MQTT y así ser vislumbrados en el entorno grafico de NODE-red
+                                total_s = diferencia.total_seconds() #  La diferencia la pasamos a segundos y se almacena en la variable
                                 
-                                if total_s >= 0.25:
+                                if total_s >= 0.25: 
+                                    '''
+                                        Si la varible total_s es igual o mayor a 0.25 segundos, entonces se empezará a
+                                        publicar los dato de la señal de EEG tanto los datos en crudo y filtrados.
+                                    '''
                                     dt1 = datetime.now()   
                                     client.publish(topic, str(data))
                                     client.publish(topicFilt, str(dataFilt))
@@ -155,7 +180,7 @@ def publish(client):
                         payload_parser_state = 'new_data_row'
         
 
-    inp = serial.Serial('/dev/rfcomm0', baudrate=57600)
+    inp = serial.Serial('/dev/rfcomm0', baudrate=57600) # Establece la comunicación serial
     parser_state = 'idle'
 
     with inp:
@@ -187,13 +212,16 @@ def publish(client):
                 parser_state = 'idle'
         
 def run():
-    client = connect_mqtt()
+    client = connect_mqtt() #   Se crea una instancia 
     client.loop_start() 
     publish(client)
 
 
 if __name__ == '__main__':
-    fichero = open('texto.txt', 'w')
+    '''
+        El main principal va a dejar el archivo de texto (se encarga de regitrar la señal) en limpio. 
+    '''
+    fichero = open('texto.txt', 'w') 
     fichero.write(' ')
     fichero.close()
     run()
